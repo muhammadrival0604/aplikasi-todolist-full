@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>To-Do List dengan Subtask</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(to right, #6a11cb, #2575fc);
+            color: white;
+        }
+        .todo-card {
+            background: white;
+            color: black;
+            border-radius: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            padding: 15px;
+        }
+        .priority-badge {
+            font-size: 0.9rem;
+            padding: 5px 10px;
+            border-radius: 8px;
+        }
+        .priority-low { background-color: #28a745; color: white; }
+        .priority-medium { background-color: #ffc107; color: black; }
+        .priority-high { background-color: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <div id="app" class="container mt-5">
+        <h1 class="text-center mb-4">To-Do List</h1>
+
+        <div class="card p-3 shadow-lg">
+            <div class="input-group mb-3">
+                <input v-model="newTask" placeholder="Tambah tugas..." class="form-control">
+                <select v-model="newPriority" class="form-select">
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                </select>
+                <input type="date" v-model="newDueDate" class="form-control">
+                <button @click="addTodo" class="btn btn-primary">Tambah</button>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            <div v-for="todo in todos" :key="todo._id" class="todo-card mb-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span v-if="!todo.editing" :style="{ textDecoration: todo.completed ? 'line-through' : 'none' }">
+                        {{ todo.title }}
+                        <span :class="{'priority-badge': true, 'priority-low': todo.priority === 'Low', 'priority-medium': todo.priority === 'Medium', 'priority-high': todo.priority === 'High'}">
+                            {{ todo.priority }}
+                        </span>
+                        <span v-if="todo.dueDate" class="text-muted"> (Jatuh tempo: {{ todo.dueDate }})</span>
+                    </span>
+                    <input v-if="todo.editing" v-model="todo.editedTitle" class="form-control">
+                    
+                    <div>
+                        <button @click="toggleTodo(todo._id)" class="btn btn-outline-success btn-sm me-2">
+                            {{ todo.completed ? "Belum" : "Selesai" }}
+                        </button>
+                        <button @click="editTodo(todo)" class="btn btn-outline-warning btn-sm me-2">
+                            {{ todo.editing ? "Simpan" : "Edit" }}
+                        </button>
+                        <button @click="deleteTodo(todo._id)" class="btn btn-outline-danger btn-sm">Hapus</button>
+                    </div>
+                </div>
+                
+                <ul class="list-group mt-2">
+                    <li v-for="subtask in todo.subtasks" :key="subtask._id" class="list-group-item d-flex justify-content-between">
+                        <span :style="{ textDecoration: subtask.completed ? 'line-through' : 'none' }">
+                            {{ subtask.title }}
+                        </span>
+                        <div>
+                            <button @click="toggleSubtask(todo._id, subtask._id)" class="btn btn-success btn-sm me-2">
+                                {{ subtask.completed ? "Batal" : "Selesai" }}
+                            </button>
+                            <button @click="deleteSubtask(todo._id, subtask._id)" class="btn btn-danger btn-sm">Hapus</button>
+                        </div>
+                    </li>
+                </ul>
+                
+                <div class="input-group mt-2">
+                    <input v-model="newSubtasks[todo._id]" placeholder="Tambah subtask..." class="form-control">
+                    <button @click="addSubtask(todo._id)" class="btn btn-secondary">Tambah Subtask</button>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    todos: [],
+                    newTask: "",
+                    newPriority: "Medium",
+                    newDueDate: null,
+                    newSubtasks: {} 
+                };
+            },
+            mounted() {
+                this.fetchTodos();
+            },
+            methods: {
+                async fetchTodos() {
+                    try {
+                        const response = await axios.get("/api/todos");
+                        this.todos = response.data.map(todo => ({ ...todo, editing: false, editedTitle: todo.title }));
+                    } catch (error) {
+                        console.error("Gagal mengambil data todo:", error);
+                    }
+                },
+                async addTodo() {
+                    if (!this.newTask.trim()) {
+                        alert("Judul tugas tidak boleh kosong!");
+                        return;
+                    }
+                    try {
+                        await axios.post("/api/todos", {
+                            title: this.newTask,
+                            priority: this.newPriority,
+                            dueDate: this.newDueDate,
+                            subtasks: [] 
+                        });
+                        this.newTask = "";
+                        this.newPriority = "Medium";
+                        this.newDueDate = null;
+                        this.fetchTodos();
+                    } catch (error) {
+                        console.error("Gagal menambahkan tugas:", error);
+                    }
+                },
+                async addSubtask(todoId) {
+                    const subtaskTitle = this.newSubtasks[todoId]?.trim();
+                    if (!subtaskTitle) {
+                        alert("Judul subtask tidak boleh kosong!");
+                        return;
+                    }
+
+                    try {
+                        await axios.post(`/api/todos/${todoId}/subtasks`, {
+                            title: subtaskTitle
+                        });
+                        this.newSubtasks[todoId] = "";
+                        this.fetchTodos();
+                    } catch (error) {
+                        console.error("Gagal menambahkan subtask:", error);
+                    }
+                },
+                async toggleTodo(id) {
+                    const todo = this.todos.find(t => t._id === id);
+                    await axios.put(`/api/todos/${id}`, { completed: !todo.completed });
+                    this.fetchTodos();
+                },
+                async toggleSubtask(todoId, subtaskId) {
+                    try {
+                        await axios.put(`/api/todos/${todoId}/subtasks/${subtaskId}`);
+                        this.fetchTodos(); 
+                    }catch (error) {
+                        console.error("Gagal mengubah status subtask:", error);
+                    }
+                },
+                async deleteTodo(id) {
+                    await axios.delete(`/api/todos/${id}`);
+                    this.fetchTodos();
+                },
+                async deleteSubtask(todoId, subtaskId) {
+                    await axios.delete(`/api/todos/${todoId}/subtasks/${subtaskId}`);
+                    this.fetchTodos();
+                },
+                async editTodo(todo) {
+                    if (todo.editing) {
+                        await axios.put(`/api/todos/${todo._id}`, { title: todo.editedTitle });
+                        this.fetchTodos();
+                    }
+                    todo.editing = !todo.editing;
+                }
+            }
+        }).mount("#app");
+    </script>
+</body>
+</html>
